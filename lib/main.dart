@@ -601,19 +601,19 @@ class _NavBar extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: C.surface,
-        border: Border(top: BorderSide(color: C.divider, width: 0.8)),
+        border: Border(top: BorderSide(color: C.divider, width: 1.0)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 12,
-            offset: const Offset(0, -3),
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
           ),
         ],
       ),
       child: SafeArea(
         child: Padding(
-          // Substantially increased navigation padding for iPhone 15 Pro usability and prominence
-          padding: const EdgeInsets.only(left: 14, right: 14, top: 12, bottom: 16),
+          // Extra prominent padding for comfort and visual balance on iPhone 15 Pro
+          padding: const EdgeInsets.only(left: 18, right: 18, top: 16, bottom: 24),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
@@ -646,28 +646,28 @@ class _Tab extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 240),
         curve: Curves.easeOutCubic,
-        // Increased tap area padding to make it larger and more user-friendly
+        // Larger pill-shape padding
         padding: EdgeInsets.symmetric(
-            horizontal: active ? 18 : 14, vertical: 12),
+            horizontal: active ? 22 : 16, vertical: 14),
         decoration: BoxDecoration(
           color: active ? C.accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Substantially increased icon size from 20 to 24
-            Icon(icon, size: 24, color: active ? Colors.white : C.t3),
+            // Enlarged icon size to 26 for prominent UX
+            Icon(icon, size: 26, color: active ? Colors.white : C.t3),
             if (active) ...[
-              const SizedBox(width: 8),
-              // Increased label text from 13 to 14, with bold styling for professional look
+              const SizedBox(width: 10),
+              // Enlarged label to 15 with extra bold weight
               Text(
                 label,
                 style: GoogleFonts.inter(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
                   color: Colors.white,
-                  letterSpacing: -0.2,
+                  letterSpacing: -0.3,
                 ),
               ),
             ],
