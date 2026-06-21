@@ -1245,7 +1245,7 @@ class _AddExpensePageState extends State<AddExpensePage>
       if (_cat == null) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Pilih kategori terlebih dahulu',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w500)),
+              style: GoogleFonts.inter(fontWeight: FontWeight.w500, color: C.t1)),
           backgroundColor: C.elevated,
           behavior: SnackBarBehavior.floating,
           shape:
@@ -1282,7 +1282,7 @@ class _AddExpensePageState extends State<AddExpensePage>
         const Icon(Icons.check_circle_rounded, color: C.green, size: 20),
         const SizedBox(width: 10),
         Text('Pengeluaran tersimpan!',
-            style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: C.t1)),
       ]),
       backgroundColor: C.card,
       behavior: SnackBarBehavior.floating,
@@ -2214,7 +2214,7 @@ class _EditExpenseSheetState extends State<_EditExpenseSheet>
       if (_cat == null) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Pilih kategori terlebih dahulu',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w500)),
+              style: GoogleFonts.inter(fontWeight: FontWeight.w500, color: C.t1)),
           backgroundColor: C.elevated,
           behavior: SnackBarBehavior.floating,
           shape:
@@ -2246,7 +2246,7 @@ class _EditExpenseSheetState extends State<_EditExpenseSheet>
         const Icon(Icons.check_circle_rounded, color: C.green, size: 20),
         const SizedBox(width: 10),
         Text('Perubahan disimpan!',
-            style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: C.t1)),
       ]),
       backgroundColor: C.card,
       behavior: SnackBarBehavior.floating,
