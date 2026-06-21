@@ -5,9 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
-import 'package:path/path.dart' as p;
+import 'package:hive_flutter/hive_flutter.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DESIGN SYSTEM
@@ -210,92 +208,53 @@ class ThousandsFormatter extends TextInputFormatter {
 
 class DbHelper {
   static const String _table = 'expenses';
-  static Database? _db;
+  static Box? _box;
 
-  static Future<Database> get database async {
-    if (_db != null) return _db!;
-    _db = await _init();
-    return _db!;
-  }
-
-  static Future<Database> _init() async {
-    String dbPath;
-    if (kIsWeb) {
-      dbPath = 'expense_tracker.db';
-    } else {
-      final dir = await getDatabasesPath();
-      dbPath = p.join(dir, 'expense_tracker.db');
-    }
-
-    return openDatabase(
-      dbPath,
-      version: 1,
-      onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE $_table (
-            id TEXT PRIMARY KEY,
-            amount REAL NOT NULL,
-            note TEXT NOT NULL,
-            category TEXT NOT NULL,
-            date INTEGER NOT NULL
-          )
-        ''');
-      },
-    );
+  static Future<Box> get _getBox async {
+    if (_box != null && _box!.isOpen) return _box!;
+    _box = await Hive.openBox(_table);
+    return _box!;
   }
 
   static Future<void> insert(Expense e) async {
-    final db = await database;
-    await db.insert(_table, e.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    final box = await _getBox;
+    await box.put(e.id, e.toMap());
   }
 
   static Future<List<Expense>> getAll() async {
-    final db = await database;
-    final maps = await db.query(_table, orderBy: 'date DESC');
-    return maps.map((m) => Expense.fromMap(m)).toList();
+    final box = await _getBox;
+    final List<Expense> list = box.values
+        .map((m) => Expense.fromMap(Map<String, dynamic>.from(m as Map)))
+        .toList();
+    list.sort((a, b) => b.date.compareTo(a.date));
+    return list;
   }
 
   static Future<List<Expense>> getByMonth(int year, int month) async {
-    final db = await database;
-    final start = DateTime(year, month).millisecondsSinceEpoch;
-    final end = DateTime(year, month + 1).millisecondsSinceEpoch;
-    final maps = await db.query(
-      _table,
-      where: 'date >= ? AND date < ?',
-      whereArgs: [start, end],
-      orderBy: 'date DESC',
-    );
-    return maps.map((m) => Expense.fromMap(m)).toList();
+    final list = await getAll();
+    return list.where((e) => e.date.year == year && e.date.month == month).toList();
   }
 
   static Future<List<DateTime>> getAvailableMonths() async {
-    final db = await database;
-    final results = await db.rawQuery('''
-      SELECT DISTINCT
-        CAST(strftime('%Y', date / 1000, 'unixepoch') AS INTEGER) as year,
-        CAST(strftime('%m', date / 1000, 'unixepoch') AS INTEGER) as month
-      FROM $_table
-      ORDER BY year DESC, month DESC
-    ''');
-    return results
-        .map((r) => DateTime(r['year'] as int, r['month'] as int))
-        .toList();
+    final list = await getAll();
+    final months = <String, DateTime>{};
+    for (final e in list) {
+      final key = '${e.date.year}-${e.date.month}';
+      months.putIfAbsent(key, () => DateTime(e.date.year, e.date.month));
+    }
+    final result = months.values.toList();
+    result.sort((a, b) => b.compareTo(a));
+    return result;
   }
 
   static Future<void> deleteExpense(String id) async {
-    final db = await database;
-    await db.delete(_table, where: 'id = ?', whereArgs: [id]);
+    final box = await _getBox;
+    await box.delete(id);
   }
 
   static Future<void> updateExpense(Expense e) async {
-    final db = await database;
-    await db.update(
-      _table,
-      e.toMap(),
-      where: 'id = ?',
-      whereArgs: [e.id],
-    );
+    final box = await _getBox;
+    await box.put(e.id, e.toMap());
   }
 }
 
@@ -397,14 +356,14 @@ class ExpenseProvider extends ChangeNotifier {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Enable sqflite on web
-  if (kIsWeb) {
-    databaseFactory = databaseFactoryFfiWeb;
-  }
+  // Initialize Hive for all-platform support (including Web/PWA)
+  await Hive.initFlutter();
 
+  // Blend status bar seamlessly with dark theme (dark charcoal background, white system icons)
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
+    statusBarColor: Color(0xFF0F0F0F), // Dark charcoal matching dark theme
+    statusBarIconBrightness: Brightness.light, // White system icons for Android
+    statusBarBrightness: Brightness.dark, // White system icons for iOS
     systemNavigationBarColor: C.bg,
     systemNavigationBarIconBrightness: Brightness.light,
   ));
@@ -642,11 +601,19 @@ class _NavBar extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: C.surface,
-        border: Border(top: BorderSide(color: C.divider, width: 0.5)),
+        border: Border(top: BorderSide(color: C.divider, width: 0.8)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, -3),
+          ),
+        ],
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          // Substantially increased navigation padding for iPhone 15 Pro usability and prominence
+          padding: const EdgeInsets.only(left: 14, right: 14, top: 12, bottom: 16),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
@@ -677,25 +644,32 @@ class _Tab extends StatelessWidget {
       onTap: () => onTap(idx),
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+        // Increased tap area padding to make it larger and more user-friendly
         padding: EdgeInsets.symmetric(
-            horizontal: active ? 16 : 12, vertical: 8),
+            horizontal: active ? 18 : 14, vertical: 12),
         decoration: BoxDecoration(
           color: active ? C.accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 20, color: active ? Colors.white : C.t3),
+            // Substantially increased icon size from 20 to 24
+            Icon(icon, size: 24, color: active ? Colors.white : C.t3),
             if (active) ...[
-              const SizedBox(width: 7),
-              Text(label,
-                  style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white)),
+              const SizedBox(width: 8),
+              // Increased label text from 13 to 14, with bold styling for professional look
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  letterSpacing: -0.2,
+                ),
+              ),
             ],
           ],
         ),
