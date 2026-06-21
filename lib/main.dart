@@ -397,7 +397,7 @@ class App extends StatelessWidget {
         ),
         snackBarTheme: SnackBarThemeData(
           backgroundColor: C.card,
-          contentTextStyle: GoogleFonts.inter(
+          contentTextStyle: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w600,
             fontSize: 14,
@@ -1035,7 +1035,7 @@ class _DashboardPageState extends State<DashboardPage>
                                     const SizedBox(width: 10),
                                     Text(
                                       'Pengeluaran dihapus',
-                                      style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.white),
+                                      style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14),
                                     ),
                                   ],
                                 ),
@@ -1253,8 +1253,8 @@ class _AddExpensePageState extends State<AddExpensePage>
     if (!_formKey.currentState!.validate() || _cat == null) {
       if (_cat == null) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Pilih kategori terlebih dahulu',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w500, color: Colors.white)),
+          content: const Text('Pilih kategori terlebih dahulu',
+              style: TextStyle(fontWeight: FontWeight.w500, color: Colors.white, fontSize: 14)),
           backgroundColor: C.elevated,
           behavior: SnackBarBehavior.floating,
           shape:
@@ -1287,11 +1287,11 @@ class _AddExpensePageState extends State<AddExpensePage>
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Row(children: [
-        const Icon(Icons.check_circle_rounded, color: C.green, size: 20),
-        const SizedBox(width: 10),
+      content: const Row(children: [
+        Icon(Icons.check_circle_rounded, color: C.green, size: 20),
+        SizedBox(width: 10),
         Text('Pengeluaran tersimpan!',
-            style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.white)),
+            style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14)),
       ]),
       backgroundColor: C.card,
       behavior: SnackBarBehavior.floating,
@@ -1743,7 +1743,7 @@ class _HistoryPageState extends State<HistoryPage>
                                         const SizedBox(width: 10),
                                         Text(
                                           'Pengeluaran dihapus',
-                                          style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.white),
+                                          style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14),
                                         ),
                                       ],
                                     ),
@@ -2222,8 +2222,8 @@ class _EditExpenseSheetState extends State<_EditExpenseSheet>
     if (!_formKey.currentState!.validate() || _cat == null) {
       if (_cat == null) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Pilih kategori terlebih dahulu',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w500, color: Colors.white)),
+          content: const Text('Pilih kategori terlebih dahulu',
+              style: TextStyle(fontWeight: FontWeight.w500, color: Colors.white, fontSize: 14)),
           backgroundColor: C.elevated,
           behavior: SnackBarBehavior.floating,
           shape:
@@ -2251,11 +2251,11 @@ class _EditExpenseSheetState extends State<_EditExpenseSheet>
     Navigator.pop(context);
 
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Row(children: [
-        const Icon(Icons.check_circle_rounded, color: C.green, size: 20),
-        const SizedBox(width: 10),
+      content: const Row(children: [
+        Icon(Icons.check_circle_rounded, color: C.green, size: 20),
+        SizedBox(width: 10),
         Text('Perubahan disimpan!',
-            style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.white)),
+            style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14)),
       ]),
       backgroundColor: C.card,
       behavior: SnackBarBehavior.floating,
