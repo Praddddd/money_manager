@@ -1357,11 +1357,22 @@ class _AddExpensePageState extends State<AddExpensePage>
       final dataUrl = 'data:$mimeType;base64,$b64';
 
       final text = await OcrService.recognizeText(dataUrl);
-      final total = OcrService.extractTotal(text);
+      final result = OcrService.processText(text);
 
-      if (total != null && total > 0) {
+      if (result.total != null && result.total! > 0) {
         final formatter = NumberFormat.decimalPattern('id');
-        _amtCtrl.text = formatter.format(total.toInt());
+        _amtCtrl.text = formatter.format(result.total!.toInt());
+        
+        if (result.note != null) {
+          _noteCtrl.text = result.note!;
+        }
+        
+        if (result.category != null && Cat.all.contains(result.category)) {
+          setState(() {
+            _cat = result.category;
+          });
+        }
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Row(children: [
@@ -1369,7 +1380,7 @@ class _AddExpensePageState extends State<AddExpensePage>
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Total terdeteksi: ${Fmt.money(total)}',
+                  'Data terdeteksi & otomatis diisi!',
                   style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       color: Colors.white,
