@@ -5,8 +5,9 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'dart:convert';
+
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'ocr_service.dart';
 import 'csv_export.dart';
 
@@ -408,6 +409,9 @@ void main() async {
 
   // Initialize Hive for all-platform support (including Web/PWA)
   await Hive.initFlutter();
+
+  // Load environment variables
+  await dotenv.load(fileName: ".env");
 
   // Blend status bar seamlessly with dark theme (dark charcoal background, white system icons)
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -1352,12 +1356,9 @@ class _AddExpensePageState extends State<AddExpensePage>
       }
 
       final bytes = await image.readAsBytes();
-      final b64 = base64Encode(bytes);
       final mimeType = image.mimeType ?? 'image/jpeg';
-      final dataUrl = 'data:$mimeType;base64,$b64';
 
-      final text = await OcrService.recognizeText(dataUrl);
-      final result = OcrService.processText(text);
+      final result = await OcrService.processImage(bytes, mimeType);
 
       if (result.total != null && result.total! > 0) {
         final formatter = NumberFormat.decimalPattern('id');
