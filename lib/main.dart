@@ -5,6 +5,10 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'dart:convert';
+import 'package:image_picker/image_picker.dart';
+import 'ocr_service.dart';
+import 'csv_export.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DESIGN SYSTEM
@@ -255,6 +259,30 @@ class DbHelper {
     final box = await _getBox;
     await box.put(e.id, e.toMap());
   }
+
+  // ─── Settings persistence ─────────────────────────────────────────────
+  static Box? _settingsBox;
+
+  static Future<Box> get _getSettingsBox async {
+    if (_settingsBox != null && _settingsBox!.isOpen) return _settingsBox!;
+    _settingsBox = await Hive.openBox('settings');
+    return _settingsBox!;
+  }
+
+  static Future<double?> getMonthlyLimit() async {
+    final box = await _getSettingsBox;
+    final val = box.get('monthly_limit');
+    return val != null ? (val as num).toDouble() : null;
+  }
+
+  static Future<void> setMonthlyLimit(double? limit) async {
+    final box = await _getSettingsBox;
+    if (limit == null) {
+      await box.delete('monthly_limit');
+    } else {
+      await box.put('monthly_limit', limit);
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -313,6 +341,29 @@ class ExpenseProvider extends ChangeNotifier {
     return list;
   }
 
+  // ─── Monthly limit ──────────────────────────────────────────────────
+  double? _monthlyLimit;
+
+  double? get monthlyLimit => _monthlyLimit;
+
+  bool get isOverLimit => _monthlyLimit != null && total > _monthlyLimit!;
+
+  double get limitPercentage {
+    if (_monthlyLimit == null || _monthlyLimit! <= 0) return 0;
+    return (total / _monthlyLimit!).clamp(0.0, 2.0);
+  }
+
+  Future<void> loadSettings() async {
+    _monthlyLimit = await DbHelper.getMonthlyLimit();
+    notifyListeners();
+  }
+
+  Future<void> setMonthlyLimit(double? limit) async {
+    await DbHelper.setMonthlyLimit(limit);
+    _monthlyLimit = limit;
+    notifyListeners();
+  }
+
   /// Load all expenses from SQLite
   Future<void> loadExpenses() async {
     _loading = true;
@@ -369,6 +420,7 @@ void main() async {
 
   final provider = ExpenseProvider();
   await provider.loadExpenses();
+  await provider.loadSettings();
 
   runApp(
     ChangeNotifierProvider.value(
@@ -900,27 +952,51 @@ class _DashboardPageState extends State<DashboardPage>
                       _Stagger(
                         i: 0,
                         ctrl: _anim,
-                        child: Column(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'Expense Tracker',
-                              style: GoogleFonts.inter(
-                                fontSize: 28,
-                                fontWeight: FontWeight.w800,
-                                color: C.t1,
-                                letterSpacing: -0.8,
-                                height: 1.1,
-                              ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Expense Tracker',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w800,
+                                    color: C.t1,
+                                    letterSpacing: -0.8,
+                                    height: 1.1,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  DateFormat('EEEE, dd MMMM yyyy')
+                                      .format(DateTime.now()),
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    color: C.t3,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              DateFormat('EEEE, dd MMMM yyyy')
-                                  .format(DateTime.now()),
-                              style: GoogleFonts.inter(
-                                fontSize: 13,
-                                color: C.t3,
-                                fontWeight: FontWeight.w400,
+                            GestureDetector(
+                              onTap: () => _showLimitSheet(context, prov),
+                              behavior: HitTestBehavior.opaque,
+                              child: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: C.card,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: C.divider, width: 0.5),
+                                ),
+                                child: const Icon(
+                                  Icons.tune_rounded,
+                                  size: 18,
+                                  color: C.t3,
+                                ),
                               ),
                             ),
                           ],
@@ -935,6 +1011,19 @@ class _DashboardPageState extends State<DashboardPage>
                         ctrl: _anim,
                         child: _TotalCard(total: prov.total),
                       ),
+
+                      // Monthly limit indicator
+                      if (prov.monthlyLimit != null) ...[
+                        const SizedBox(height: 12),
+                        _Stagger(
+                          i: 2,
+                          ctrl: _anim,
+                          child: _LimitIndicator(
+                            total: prov.total,
+                            limit: prov.monthlyLimit!,
+                          ),
+                        ),
+                      ],
 
                       const SizedBox(height: 16),
 
@@ -1221,6 +1310,7 @@ class _AddExpensePageState extends State<AddExpensePage>
   late final AnimationController _btnCtrl;
   late final Animation<double> _btnScale;
   bool _submitting = false;
+  bool _scanning = false;
 
   @override
   void initState() {
@@ -1246,6 +1336,101 @@ class _AddExpensePageState extends State<AddExpensePage>
     _stagger.dispose();
     _btnCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _scanReceipt() async {
+    if (_scanning) return;
+    setState(() => _scanning = true);
+
+    try {
+      final picker = ImagePicker();
+      final image = await picker.pickImage(source: ImageSource.camera);
+
+      if (image == null) {
+        setState(() => _scanning = false);
+        return;
+      }
+
+      final bytes = await image.readAsBytes();
+      final b64 = base64Encode(bytes);
+      final mimeType = image.mimeType ?? 'image/jpeg';
+      final dataUrl = 'data:$mimeType;base64,$b64';
+
+      final text = await OcrService.recognizeText(dataUrl);
+      final total = OcrService.extractTotal(text);
+
+      if (total != null && total > 0) {
+        final formatter = NumberFormat.decimalPattern('id');
+        _amtCtrl.text = formatter.format(total.toInt());
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Row(children: [
+              const Icon(Icons.check_circle_rounded, color: C.green, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Total terdeteksi: ${Fmt.money(total)}',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                      fontSize: 14),
+                ),
+              ),
+            ]),
+            backgroundColor: C.card,
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ));
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: const Row(children: [
+              Icon(Icons.info_outline_rounded, color: C.accent, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Tidak dapat mendeteksi total. Coba foto ulang.',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
+                      fontSize: 14),
+                ),
+              ),
+            ]),
+            backgroundColor: C.card,
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Row(children: [
+            const Icon(Icons.error_outline_rounded, color: C.red, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Gagal memproses: $e',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
+                    fontSize: 14),
+              ),
+            ),
+          ]),
+          backgroundColor: C.card,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
   }
 
   Future<void> _submit() async {
@@ -1297,6 +1482,35 @@ class _AddExpensePageState extends State<AddExpensePage>
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ));
+
+    // Check monthly limit after saving
+    final provCheck = context.read<ExpenseProvider>();
+    if (provCheck.isOverLimit && mounted) {
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Row(children: [
+            const Icon(Icons.warning_amber_rounded,
+                color: Color(0xFFFF9500), size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Pengeluaran bulan ini melebihi batas ${Fmt.money(provCheck.monthlyLimit!)}',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    fontSize: 14),
+              ),
+            ),
+          ]),
+          backgroundColor: C.card,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 4),
+        ));
+      });
+    }
   }
 
   @override
@@ -1361,6 +1575,50 @@ class _AddExpensePageState extends State<AddExpensePage>
                       },
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              _Stagger(
+                i: 1,
+                ctrl: _stagger,
+                child: GestureDetector(
+                  onTap: _scanning ? null : _scanReceipt,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: C.card,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: C.divider),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.document_scanner_rounded,
+                            size: 18, color: C.accent),
+                        const SizedBox(width: 8),
+                        Text(
+                          _scanning ? 'Memproses struk...' : 'Scan Struk',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: C.t2,
+                          ),
+                        ),
+                        if (_scanning) ...[
+                          const SizedBox(width: 8),
+                          const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              color: C.accent,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 22),
@@ -1614,12 +1872,77 @@ class _HistoryPageState extends State<HistoryPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Riwayat',
-                          style: GoogleFonts.inter(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              color: C.t1,
-                              letterSpacing: -0.5)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Riwayat',
+                              style: GoogleFonts.inter(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
+                                  color: C.t1,
+                                  letterSpacing: -0.5)),
+                          GestureDetector(
+                            onTap: () {
+                              if (prov.all.isEmpty) return;
+                              CsvExport.export(
+                                headers: [
+                                  'ID',
+                                  'Tanggal',
+                                  'Kategori',
+                                  'Catatan',
+                                  'Jumlah',
+                                ],
+                                rows: prov.all
+                                    .map((e) => [
+                                          e.id,
+                                          DateFormat('yyyy-MM-dd HH:mm:ss')
+                                              .format(e.date),
+                                          e.category,
+                                          e.note,
+                                          e.amount.toString(),
+                                        ])
+                                    .toList(),
+                                filename:
+                                    'pengeluaran_${DateFormat('yyyy-MM-dd').format(DateTime.now())}.csv',
+                              );
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Row(children: [
+                                    Icon(Icons.check_circle_rounded,
+                                        color: C.green, size: 20),
+                                    SizedBox(width: 10),
+                                    Text('Data berhasil di-export!',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.white,
+                                            fontSize: 14)),
+                                  ]),
+                                  backgroundColor: C.card,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12)),
+                                ),
+                              );
+                            },
+                            behavior: HitTestBehavior.opaque,
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: C.card,
+                                borderRadius: BorderRadius.circular(12),
+                                border:
+                                    Border.all(color: C.divider, width: 0.5),
+                              ),
+                              child: const Icon(
+                                Icons.file_download_outlined,
+                                size: 18,
+                                color: C.t3,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 4),
                       Text(
                         '${filtered.length} pengeluaran · ${Fmt.money(total)}',
@@ -2146,6 +2469,337 @@ class _Stagger extends StatelessWidget {
       builder: (_, _) => Opacity(
         opacity: fade.value,
         child: SlideTransition(position: slide, child: child),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MONTHLY LIMIT INDICATOR
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _LimitIndicator extends StatelessWidget {
+  final double total;
+  final double limit;
+  const _LimitIndicator({required this.total, required this.limit});
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = limit > 0 ? (total / limit).clamp(0.0, 1.0) : 0.0;
+    final isOver = total > limit;
+    final color =
+        isOver ? C.red : (pct > 0.8 ? const Color(0xFFFF9500) : C.accent);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: C.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isOver ? C.red.withValues(alpha: 0.3) : C.divider,
+          width: 0.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isOver ? Icons.warning_amber_rounded : Icons.flag_rounded,
+                    size: 14,
+                    color: color,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    isOver ? 'Melebihi Batas!' : 'Batas Bulanan',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isOver ? color : C.t2,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                '${Fmt.money(total)} / ${Fmt.money(limit)}',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: C.t3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: pct),
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeOutCubic,
+              builder: (_, v, _) => LinearProgressIndicator(
+                value: v,
+                backgroundColor: C.elevated,
+                valueColor: AlwaysStoppedAnimation(color),
+                minHeight: 4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MONTHLY LIMIT SETTINGS SHEET
+// ═══════════════════════════════════════════════════════════════════════════════
+
+void _showLimitSheet(BuildContext context, ExpenseProvider prov) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.6),
+    builder: (context) => _LimitSettingsSheet(provider: prov),
+  );
+}
+
+class _LimitSettingsSheet extends StatefulWidget {
+  final ExpenseProvider provider;
+  const _LimitSettingsSheet({required this.provider});
+
+  @override
+  State<_LimitSettingsSheet> createState() => _LimitSettingsSheetState();
+}
+
+class _LimitSettingsSheetState extends State<_LimitSettingsSheet> {
+  late final TextEditingController _limitCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final current = widget.provider.monthlyLimit;
+    if (current != null) {
+      final formatter = NumberFormat.decimalPattern('id');
+      _limitCtrl =
+          TextEditingController(text: formatter.format(current.toInt()));
+    } else {
+      _limitCtrl = TextEditingController();
+    }
+  }
+
+  @override
+  void dispose() {
+    _limitCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: C.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(
+            top: BorderSide(color: C.divider, width: 0.5),
+          ),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Pull handle
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: C.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                Text('Batas Pengeluaran',
+                    style: GoogleFonts.inter(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        color: C.t1,
+                        letterSpacing: -0.5)),
+                const SizedBox(height: 4),
+                Text('Atur batas pengeluaran bulanan',
+                    style: GoogleFonts.inter(fontSize: 13, color: C.t3)),
+                const SizedBox(height: 24),
+
+                _FieldLabel('BATAS BULANAN'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _limitCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [ThousandsFormatter()],
+                  style: GoogleFonts.inter(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: C.t1,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: '0',
+                    prefixText: 'Rp ',
+                    prefixStyle: GoogleFonts.inter(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: C.t3),
+                    hintStyle: GoogleFonts.inter(color: C.t3, fontSize: 15),
+                    filled: true,
+                    fillColor: C.card,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: C.divider),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide:
+                          const BorderSide(color: C.accent, width: 1.5),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 18),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Save button
+                GestureDetector(
+                  onTap: () async {
+                    final text = _limitCtrl.text.replaceAll('.', '').trim();
+                    if (text.isEmpty) {
+                      await widget.provider.setMonthlyLimit(null);
+                    } else {
+                      final val = double.tryParse(text);
+                      if (val != null && val > 0) {
+                        await widget.provider.setMonthlyLimit(val);
+                      }
+                    }
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: const Row(children: [
+                        Icon(Icons.check_circle_rounded,
+                            color: C.green, size: 20),
+                        SizedBox(width: 10),
+                        Text('Batas pengeluaran disimpan!',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                                fontSize: 14)),
+                      ]),
+                      backgroundColor: C.card,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ));
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: C.accent,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: C.accent.withValues(alpha: 0.2),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Simpan',
+                        style: GoogleFonts.inter(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Clear limit button
+                if (widget.provider.monthlyLimit != null)
+                  GestureDetector(
+                    onTap: () async {
+                      await widget.provider.setMonthlyLimit(null);
+                      if (!context.mounted) return;
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: const Row(children: [
+                          Icon(Icons.check_circle_rounded,
+                              color: C.green, size: 20),
+                          SizedBox(width: 10),
+                          Text('Batas pengeluaran dihapus',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                  fontSize: 14)),
+                        ]),
+                        backgroundColor: C.card,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ));
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                        border:
+                            Border.all(color: C.red.withValues(alpha: 0.3)),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'Hapus Batas',
+                          style: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: C.red,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
