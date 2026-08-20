@@ -26,7 +26,13 @@ class OcrService {
     );
 
     final prompt = TextPart(
-        'Analisis gambar struk ini. Ekstrak data dan kembalikan HANYA dalam format JSON valid tanpa markdown block (```json) atau teks pengantar apapun. Skema JSON: {"amount": <angka total nominal tanpa titik/simbol>, "title": "<nama merchant/toko>", "category": "<pilih salah satu yang paling cocok: Makanan, Transportasi, Belanja, Hiburan, Tagihan, atau Lainnya>"}');
+        '''Kamu adalah sistem ekstraksi struk. Baca struk ini dengan teliti.
+Aturan:
+amount: Cari nominal AKHIR yang benar-benar dibayarkan (biasanya berlabel 'Total Belanja', 'Total', 'Amount Due'). JANGAN gunakan angka 'Tunai', 'Cash', 'Pay', 'Kembalian', atau total sebelum diskon. Hilangkan titik/koma.
+title: Ambil nama toko dari 1-2 baris paling atas (contoh: Alfamart, Indomaret, dll).
+category: Tentukan satu kategori (Makanan, Transportasi, Belanja, Hiburan, Tagihan, Lainnya) berdasarkan nama toko atau item barang.
+Keluarkan output HANYA JSON murni tanpa teks awalan/akhiran dan TANPA markdown block (jangan pakai ```json).
+Contoh output valid: {"amount": 16200, "title": "Alfamart Batu Kandik", "category": "Makanan"}''');
 
     final imagePart = DataPart(mimeType, imageBytes);
 
@@ -40,7 +46,18 @@ class OcrService {
     }
 
     try {
-      final cleanText = text.replaceAll('```json', '').replaceAll('```', '').trim();
+      var cleanText = text.trim();
+      // Remove markdown blocks if Gemini accidentally includes them
+      cleanText = cleanText.replaceAll(RegExp(r'^```(json)?\s*'), '');
+      cleanText = cleanText.replaceAll(RegExp(r'\s*```$'), '');
+      
+      // Fallback: extract only the JSON object part if there's any prefix/suffix junk text
+      final startIndex = cleanText.indexOf('{');
+      final endIndex = cleanText.lastIndexOf('}');
+      if (startIndex != -1 && endIndex != -1 && endIndex >= startIndex) {
+        cleanText = cleanText.substring(startIndex, endIndex + 1);
+      }
+
       final Map<String, dynamic> json = jsonDecode(cleanText);
 
       double? total;
