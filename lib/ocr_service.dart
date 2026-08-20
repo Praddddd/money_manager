@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter/foundation.dart';
 
 class OcrResult {
   final double? total;
@@ -23,16 +23,20 @@ class OcrService {
     final model = GenerativeModel(
       model: 'gemini-1.5-flash',
       apiKey: apiKey,
+      generationConfig: GenerationConfig(
+        responseMimeType: 'application/json',
+      ),
     );
 
     final prompt = TextPart(
-        '''Kamu adalah sistem ekstraksi struk. Baca struk ini dengan teliti.
-Aturan:
-amount: Cari nominal AKHIR yang benar-benar dibayarkan (biasanya berlabel 'Total Belanja', 'Total', 'Amount Due'). JANGAN gunakan angka 'Tunai', 'Cash', 'Pay', 'Kembalian', atau total sebelum diskon. Hilangkan titik/koma.
-title: Ambil nama toko dari 1-2 baris paling atas (contoh: Alfamart, Indomaret, dll).
-category: Tentukan satu kategori (Makanan, Transportasi, Belanja, Hiburan, Tagihan, Lainnya) berdasarkan nama toko atau item barang.
-Keluarkan output HANYA JSON murni tanpa teks awalan/akhiran dan TANPA markdown block (jangan pakai ```json).
-Contoh output valid: {"amount": 16200, "title": "Alfamart Batu Kandik", "category": "Makanan"}''');
+        '''Analisis struk belanja.
+
+Cari teks 'Total Belanja' atau 'Total'. Ambil angkanya. ABAIKAN angka pada baris 'Tunai', 'Kembalian', atau 'Total Item'.
+
+Ambil nama toko dari baris teratas (contoh: Alfamart).
+
+Tentukan kategori berdasarkan barang yang dibeli (Makanan, Belanja, Transportasi, dll).
+Keluarkan HANYA JSON dengan schema: {"amount": integer, "title": "string", "category": "string"}''');
 
     final imagePart = DataPart(mimeType, imageBytes);
 
@@ -45,34 +49,30 @@ Contoh output valid: {"amount": 16200, "title": "Alfamart Batu Kandik", "categor
       throw Exception('Gemini mengembalikan respons kosong.');
     }
 
-    try {
-      var cleanText = text.trim();
-      // Remove markdown blocks if Gemini accidentally includes them
-      cleanText = cleanText.replaceAll(RegExp(r'^```(json)?\s*'), '');
-      cleanText = cleanText.replaceAll(RegExp(r'\s*```$'), '');
-      
-      // Fallback: extract only the JSON object part if there's any prefix/suffix junk text
-      final startIndex = cleanText.indexOf('{');
-      final endIndex = cleanText.lastIndexOf('}');
-      if (startIndex != -1 && endIndex != -1 && endIndex >= startIndex) {
-        cleanText = cleanText.substring(startIndex, endIndex + 1);
-      }
+    debugPrint('Gemini response: $text');
 
-      final Map<String, dynamic> json = jsonDecode(cleanText);
+    try {
+      String rawText = text;
+      // Hapus markdown block
+      rawText = rawText.replaceAll(RegExp(r'```json\n?'), '').replaceAll(RegExp(r'```'), '').trim();
+      // Ekstrak hanya bagian dalam kurung kurawal
+      final match = RegExp(r'\{[\s\S]*\}').firstMatch(rawText);
+      final jsonString = match != null ? match.group(0)! : '{}';
+      final data = jsonDecode(jsonString);
 
       double? total;
-      if (json['amount'] != null) {
-        if (json['amount'] is num) {
-          total = (json['amount'] as num).toDouble();
-        } else if (json['amount'] is String) {
-          total = double.tryParse(json['amount'].toString().replaceAll(RegExp(r'[^0-9.]'), ''));
+      if (data['amount'] != null) {
+        if (data['amount'] is num) {
+          total = (data['amount'] as num).toDouble();
+        } else if (data['amount'] is String) {
+          total = double.tryParse(data['amount'].toString().replaceAll(RegExp(r'[^0-9.]'), ''));
         }
       }
 
       return OcrResult(
         total: total,
-        note: json['title']?.toString(),
-        category: json['category']?.toString(),
+        note: data['title']?.toString(),
+        category: data['category']?.toString(),
       );
     } catch (e) {
       throw Exception('Gagal memparsing JSON dari Gemini: $e\nResponse: $text');
