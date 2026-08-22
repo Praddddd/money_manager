@@ -1364,15 +1364,19 @@ class _AddExpensePageState extends State<AddExpensePage>
         final formatter = NumberFormat.decimalPattern('id');
         _amtCtrl.text = formatter.format(result.total!.toInt());
         
-        if (result.note != null) {
+        if (result.note != null && result.note!.isNotEmpty) {
           _noteCtrl.text = result.note!;
         }
         
-        if (result.category != null && Cat.all.contains(result.category)) {
-          setState(() {
-            _cat = result.category;
-          });
+        String categoryToSet = result.category ?? 'Lainnya';
+        if (!Cat.all.contains(categoryToSet)) {
+          categoryToSet = 'Lainnya';
         }
+        
+        setState(() {
+          _cat = categoryToSet;
+          _scanning = false;
+        });
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -1381,11 +1385,11 @@ class _AddExpensePageState extends State<AddExpensePage>
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Data terdeteksi & otomatis diisi!',
+                  'Data terdeteksi & otomatis diisi!\nJumlah: ${result.total}, Toko: ${result.note}, Kategori: $categoryToSet',
                   style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       color: Colors.white,
-                      fontSize: 14),
+                      fontSize: 13),
                 ),
               ),
             ]),
@@ -1393,9 +1397,11 @@ class _AddExpensePageState extends State<AddExpensePage>
             behavior: SnackBarBehavior.floating,
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 3),
           ));
         }
       } else {
+        setState(() => _scanning = false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: const Row(children: [
@@ -1403,7 +1409,7 @@ class _AddExpensePageState extends State<AddExpensePage>
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Tidak dapat mendeteksi total. Coba foto ulang.',
+                  'Tidak dapat mendeteksi total. Coba foto ulang dengan lighting lebih baik.',
                   style: TextStyle(
                       fontWeight: FontWeight.w500,
                       color: Colors.white,
@@ -1419,6 +1425,7 @@ class _AddExpensePageState extends State<AddExpensePage>
         }
       }
     } catch (e) {
+      setState(() => _scanning = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Row(children: [
@@ -1440,8 +1447,6 @@ class _AddExpensePageState extends State<AddExpensePage>
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ));
       }
-    } finally {
-      if (mounted) setState(() => _scanning = false);
     }
   }
 

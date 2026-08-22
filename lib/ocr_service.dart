@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
@@ -62,22 +61,34 @@ class _CategoryMapper {
 
 class OcrService {
   static Future<OcrResult> processImage(Uint8List imageBytes, String mimeType) async {
-    final inputImage = InputImage.fromBytes(bytes: imageBytes, metadata: InputImageMetadata(size: const Size(0, 0), rotation: InputImageRotation.rotation0deg, format: InputImageFormat.bgra8888, bytesPerRow: 0));
+    final inputImage = InputImage.fromBytes(
+      bytes: imageBytes,
+      metadata: InputImageMetadata(
+        size: const Size(0, 0),
+        rotation: InputImageRotation.rotation0deg,
+        format: InputImageFormat.bgra8888,
+        bytesPerRow: 0,
+      ),
+    );
     
     final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
     
     try {
       final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
-      final fullText = recognizedText.text.toLowerCase();
+      final fullText = recognizedText.text;
       
-      debugPrint('OCR extracted text:\n$fullText');
+      debugPrint('===== OCR FULL TEXT =====');
+      debugPrint(fullText);
+      debugPrint('========================');
       
       final title = _extractStoreName(fullText);
       final total = _extractTotal(fullText);
       final category = _CategoryMapper.mapCategory(title);
       
+      debugPrint('Extracted - Title: $title, Total: $total, Category: $category');
+      
       if (total == null || total <= 0) {
-        throw Exception('Total tidak ditemukan atau invalid');
+        throw Exception('Total tidak ditemukan atau invalid (nilai: $total)');
       }
       
       return OcrResult(
@@ -97,14 +108,23 @@ class OcrService {
       final clean = line.trim();
       if (clean.isEmpty) continue;
       if (clean.length < 3) continue;
-      if (clean.contains('pt.sumber') || clean.contains('alfaria') || clean.contains('alfamart') || 
-          clean.contains('indomaret') || clean.contains('batu kandik') || clean.contains('toko')) {
-        return clean.replaceAll(RegExp(r'[^a-z0-9\s]'), '').trim();
+      
+      final lower = clean.toLowerCase();
+      
+      if (lower.contains('alfamart') || lower.contains('indomaret') || 
+          lower.contains('minimarket') || lower.contains('batu kandik') ||
+          lower.contains('pt.sumber') || lower.contains('alfaria')) {
+        return clean;
       }
-      if (!clean.contains('total') && !clean.contains('item') && !clean.contains('rp') && 
-          !clean.contains('diskon') && !clean.contains('tunai') && !clean.contains('kembalian') &&
-          !clean.contains('kasir') && !clean.contains('tanggal')) {
-        return clean.replaceAll(RegExp(r'[^a-z0-9\s]'), '').trim();
+      
+      if (!lower.contains('total') && !lower.contains('item') && 
+          !lower.contains('tunai') && !lower.contains('kembalian') &&
+          !lower.contains('diskon') && !lower.contains('kasir') && 
+          !lower.contains('tanggal') && !lower.contains('rp') &&
+          !lower.contains('npwp') && !lower.contains('no.') &&
+          !clean.contains(RegExp(r'^\d')) &&
+          clean.length > 3 && clean.length < 50) {
+        return clean;
       }
     }
     
@@ -113,53 +133,77 @@ class OcrService {
 
   static double? _extractTotal(String text) {
     final lines = text.split('\n');
-    double? largestAmount;
+    double? bestTotal;
     
-    for (final line in lines) {
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i].toLowerCase();
+      final originalLine = lines[i];
+      
       if (line.contains('total belanja')) {
-        final match = RegExp(r'(\d+)[.,]?(\d*)').firstMatch(line);
-        if (match != null) {
-          final num = match.group(1)!;
-          final decimal = match.group(2);
-          final amount = double.parse('$num${decimal != null && decimal.isNotEmpty ? '.$decimal' : '.0'}');
-          if (amount > 0) return amount;
+        final amount = _extractAmountFromLine(originalLine);
+        if (amount != null && amount > 0) {
+          debugPrint('Found Total Belanja: $amount');
+          return amount;
         }
       }
     }
     
-    for (final line in lines) {
-      if (line.contains('total') && !line.contains('item') && !line.contains('diskon') && 
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i].toLowerCase();
+      final originalLine = lines[i];
+      
+      if ((line.contains('total') || line.contains('subtotal')) && 
+          !line.contains('item') && !line.contains('diskon') && 
           !line.contains('tunai') && !line.contains('kembalian')) {
-        final match = RegExp(r'(\d+)[.,]?(\d*)').firstMatch(line);
-        if (match != null) {
-          final num = match.group(1)!;
-          final decimal = match.group(2);
-          final amount = double.parse('$num${decimal != null && decimal.isNotEmpty ? '.$decimal' : '.0'}');
-          if (amount > 0 && amount < 10000000) {
-            if (largestAmount == null || amount > largestAmount) {
-              largestAmount = amount;
+        final amount = _extractAmountFromLine(originalLine);
+        if (amount != null && amount > 100 && amount < 100000000) {
+          if (bestTotal == null || amount > bestTotal) {
+            bestTotal = amount;
+            debugPrint('Found Total line: $amount from "${originalLine.trim()}"');
+          }
+        }
+      }
+    }
+    
+    if (bestTotal != null) return bestTotal;
+    
+    final allAmounts = <double>[];
+    for (final line in lines) {
+      final amounts = RegExp(r'\d+(?:[.,]\d+)?').allMatches(line);
+      for (final match in amounts) {
+        String numStr = match.group(0)!.replaceAll(',', '.');
+        if (numStr.contains('.')) {
+          final parts = numStr.split('.');
+          if (parts.length == 2 && parts[1].length == 2) {
+            final amount = double.tryParse(numStr);
+            if (amount != null && amount > 100 && amount < 100000000) {
+              allAmounts.add(amount);
             }
           }
         }
       }
     }
     
-    if (largestAmount != null) return largestAmount;
-    
-    for (final line in lines) {
-      final match = RegExp(r'(\d+)[.,]?(\d*)').firstMatch(line);
-      if (match != null) {
-        final num = match.group(1)!;
-        final decimal = match.group(2);
-        final amount = double.parse('$num${decimal != null && decimal.isNotEmpty ? '.$decimal' : '.0'}');
-        if (amount > 100 && amount < 10000000) {
-          if (largestAmount == null || amount > largestAmount) {
-            largestAmount = amount;
-          }
-        }
-      }
+    if (allAmounts.isNotEmpty) {
+      allAmounts.sort();
+      bestTotal = allAmounts.last;
+      debugPrint('Fallback: largest amount found: $bestTotal');
+      return bestTotal;
     }
     
-    return largestAmount;
+    return null;
+  }
+
+  static double? _extractAmountFromLine(String line) {
+    final matches = RegExp(r'(\d+)[.,](\d+)').allMatches(line);
+    for (final match in matches) {
+      final num = match.group(1)!;
+      final decimal = match.group(2)!;
+      final amount = double.parse('$num.$decimal');
+      if (amount > 0 && amount < 100000000) {
+        return amount;
+      }
+    }
+    return null;
   }
 }
