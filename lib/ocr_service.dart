@@ -11,6 +11,56 @@ class OcrResult {
   OcrResult({this.total, this.note, this.category});
 }
 
+class _CategoryMapper {
+  static const Map<String, String> categoryMapping = {
+    'Makanan': 'Makan',
+    'Makan': 'Makan',
+    'Restoran': 'Makan',
+    'Kafe': 'Makan',
+    'Warung': 'Makan',
+    'Indomaret': 'Belanja Online',
+    'Alfamart': 'Belanja Online',
+    'Minimarket': 'Belanja Online',
+    'Supermarket': 'Belanja Online',
+    'Toko': 'Belanja Online',
+    'Belanja': 'Belanja Online',
+    'Transportasi': 'Transportasi',
+    'Gojek': 'Transportasi',
+    'Grab': 'Transportasi',
+    'Taksi': 'Transportasi',
+    'Bus': 'Transportasi',
+    'Kereta': 'Transportasi',
+    'Tagihan': 'Tagihan',
+    'Internet': 'Tagihan',
+    'Listrik': 'Tagihan',
+    'Air': 'Tagihan',
+    'Telepon': 'Tagihan',
+    'Pendidikan': 'Pendidikan',
+    'Sekolah': 'Pendidikan',
+    'Universitas': 'Pendidikan',
+    'Kursus': 'Pendidikan',
+    'Hiburan': 'Hiburan',
+    'Bioskop': 'Hiburan',
+    'Gaming': 'Hiburan',
+    'Musik': 'Hiburan',
+    'Film': 'Hiburan',
+  };
+
+  static String mapCategory(String? rawCategory) {
+    if (rawCategory == null || rawCategory.isEmpty) return 'Lainnya';
+    
+    final clean = rawCategory.trim().toLowerCase();
+    
+    for (final entry in categoryMapping.entries) {
+      if (clean.contains(entry.key.toLowerCase())) {
+        return entry.value;
+      }
+    }
+    
+    return 'Lainnya';
+  }
+}
+
 /// OCR service that uses Google Gemini AI for intelligent receipt parsing.
 class OcrService {
   /// Sends an image as bytes to Gemini API for text recognition and structured data extraction.
@@ -29,15 +79,17 @@ class OcrService {
     );
 
     final prompt = TextPart(
-        '''Ekstrak data dari gambar struk ini.
-Aturan:
+        '''Ekstrak data dari struk belanja. PENTING: Keluarkan HANYA JSON tanpa markdown atau teks tambahan.
 
-amount: Cari baris 'Total Belanja'. Ambil angkanya. Jangan ambil dari baris 'Tunai', 'Kembalian', atau 'Total Item'.
+INSTRUKSI KETAT:
 
-title: Ambil nama toko di baris paling atas.
+1. amount: WAJIB cari angka setelah "Total Belanja" atau "Total Pembelian" atau "TOTAL". Jika ada lebih dari satu baris dengan "Total", ambil yang PALING BAWAH. ABAIKAN TOTAL ITEM, TUNAI, KEMBALIAN, atau DISKON. Jika tidak menemukan "Total Belanja", cari baris terakhir dengan angka besar yang masuk akal sebagai total transaksi. Nilai harus integer positif.
 
-category: Tentukan kategori dari barang yang dibeli (Makanan, Belanja, Transportasi, Hiburan, dll).
-Keluarkan HANYA format JSON valid tanpa awalan/akhiran: {"amount": integer, "title": "string", "category": "string"}''');
+2. title: Ambil nama toko/merchant dari baris paling atas struk atau logo. Contoh: "Indomaret", "Alfamart", "Toko ABC", dst. Jangan ambil dari deskripsi barang.
+
+3. category: Berdasarkan nama toko atau barang, tentukan kategori (Makanan, Belanja Online, Transportasi, Tagihan, Pendidikan, Hiburan, Lainnya).
+
+OUTPUT: {"amount": <integer>, "title": "<string>", "category": "<string>"}''');
 
     final imagePart = DataPart(mimeType, imageBytes);
 
@@ -68,10 +120,12 @@ Keluarkan HANYA format JSON valid tanpa awalan/akhiran: {"amount": integer, "tit
         }
       }
 
+      String mappedCategory = _CategoryMapper.mapCategory(data['category']?.toString());
+      
       return OcrResult(
         total: total,
         note: data['title']?.toString(),
-        category: data['category']?.toString(),
+        category: mappedCategory,
       );
     } catch (e) {
       throw Exception('Gagal memparsing JSON dari Gemini: $e\nResponse: $text');
