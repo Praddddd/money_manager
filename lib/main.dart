@@ -1359,70 +1359,32 @@ class _AddExpensePageState extends State<AddExpensePage>
       final mimeType = image.mimeType ?? 'image/jpeg';
 
       final result = await OcrService.processImage(bytes, mimeType);
+      setState(() => _scanning = false);
 
+      if (!mounted) return;
+      
       if (result.total != null && result.total! > 0) {
-        final formatter = NumberFormat.decimalPattern('id');
-        _amtCtrl.text = formatter.format(result.total!.toInt());
-        
-        if (result.note != null && result.note!.isNotEmpty) {
-          _noteCtrl.text = result.note!;
-        }
-        
-        String categoryToSet = result.category ?? 'Lainnya';
-        if (!Cat.all.contains(categoryToSet)) {
-          categoryToSet = 'Lainnya';
-        }
-        
-        setState(() {
-          _cat = categoryToSet;
-          _scanning = false;
-        });
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Row(children: [
-              const Icon(Icons.check_circle_rounded, color: C.green, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Data terdeteksi & otomatis diisi!\nJumlah: ${result.total}, Toko: ${result.note}, Kategori: $categoryToSet',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                      fontSize: 13),
-                ),
-              ),
-            ]),
-            backgroundColor: C.card,
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            duration: const Duration(seconds: 3),
-          ));
-        }
+        _showScanPreview(result);
       } else {
-        setState(() => _scanning = false);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Row(children: [
-              Icon(Icons.info_outline_rounded, color: C.accent, size: 20),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Tidak dapat mendeteksi total. Coba foto ulang dengan lighting lebih baik.',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                      fontSize: 14),
-                ),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Row(children: [
+            Icon(Icons.info_outline_rounded, color: C.accent, size: 20),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Tidak dapat mendeteksi total. Coba foto ulang dengan lighting lebih baik.',
+                style: TextStyle(
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
+                    fontSize: 14),
               ),
-            ]),
-            backgroundColor: C.card,
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ));
-        }
+            ),
+          ]),
+          backgroundColor: C.card,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
       }
     } catch (e) {
       setState(() => _scanning = false);
@@ -1448,6 +1410,223 @@ class _AddExpensePageState extends State<AddExpensePage>
         ));
       }
     }
+  }
+
+  void _showScanPreview(OcrResult result) {
+    final formatter = NumberFormat.decimalPattern('id');
+    final formattedAmount = formatter.format(result.total!.toInt());
+    
+    String categoryToShow = result.category ?? 'Lainnya';
+    if (!Cat.all.contains(categoryToShow)) {
+      categoryToShow = 'Lainnya';
+    }
+    
+    String noteToShow = result.note ?? 'Belanja';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: C.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.receipt_long_rounded, color: C.accent, size: 24),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Hasil Scan',
+                style: TextStyle(
+                  color: C.t1,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 12),
+            Text(
+              'Jumlah',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: C.t3,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: C.elevated,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: C.divider),
+              ),
+              child: Row(
+                children: [
+                  const Text(
+                    'Rp ',
+                    style: TextStyle(color: C.t2, fontSize: 14),
+                  ),
+                  Expanded(
+                    child: Text(
+                      formattedAmount,
+                      style: GoogleFonts.inter(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: C.t1,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Toko',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: C.t3,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: C.elevated,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: C.divider),
+              ),
+              child: Text(
+                noteToShow,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: C.t1,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Kategori',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: C.t3,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: C.elevated,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: C.accent, width: 1.5),
+              ),
+              child: Row(
+                children: [
+                  Icon(Cat.icon(categoryToShow), size: 16, color: C.accent),
+                  const SizedBox(width: 8),
+                  Text(
+                    categoryToShow,
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      color: C.accent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: C.accent.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: C.accent.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_rounded, size: 16, color: C.accent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Anda bisa mengubah data di atas sebelum menyimpan.',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: C.accent,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Batal',
+              style: GoogleFonts.inter(
+                color: C.t2,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _applyScanResult(formattedAmount, noteToShow, categoryToShow);
+            },
+            child: Text(
+              'Terapkan',
+              style: GoogleFonts.inter(
+                color: C.accent,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _applyScanResult(String amount, String note, String category) {
+    _amtCtrl.text = amount;
+    _noteCtrl.text = note;
+    setState(() {
+      _cat = category;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Row(children: [
+        const Icon(Icons.check_circle_rounded, color: C.green, size: 20),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'Data diterapkan! Tinggal klik Simpan.',
+            style: GoogleFonts.inter(
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ]),
+      backgroundColor: C.card,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      duration: const Duration(seconds: 2),
+    ));
   }
 
   Future<void> _submit() async {
