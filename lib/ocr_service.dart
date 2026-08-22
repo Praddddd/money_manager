@@ -79,24 +79,14 @@ class OcrService {
     );
 
     final prompt = TextPart(
-        '''Ekstrak data dari struk belanja Indonesia. PENTING: Keluarkan HANYA JSON tanpa markdown atau teks tambahan.
+        '''Ekstrak struk belanja. Keluarkan HANYA JSON murni tanpa apapun.
 
-INSTRUKSI KETAT:
+Cari ini:
+- amount: Angka di belakang kata "Total Belanja" (tidak "Total Item", "Tunai", "Kembalian"). Jika tidak ada "Total Belanja", ambil angka terbesar di struk. Output: integer saja (16200, bukan 16.200).
+- title: Nama toko di baris pertama/atas struk.
+- category: Kategori dari nama toko atau barang.
 
-1. amount: Cari baris yang TEPAT berisi "Total Belanja" (bukan "Total Item", bukan "Total Disc", bukan "Tunai", bukan "Kembalian"). Angka di samping "Total Belanja" adalah yang dicari. Contoh struk Alfamart:
-   - Total Item: 18.100 ← JANGAN AMBIL INI
-   - Total Disc: 1.900 ← JANGAN AMBIL INI
-   - Total Belanja: 16.200 ← AMBIL INI
-   - Tunai: 50.000 ← JANGAN AMBIL INI
-   - Kembalian: 33.800 ← JANGAN AMBIL INI
-   
-   Jika tidak ada "Total Belanja", cari "TOTAL:" atau jumlah terbesar yang logical sebagai total transaksi. Nilai harus integer positif tanpa titik ribuan.
-
-2. title: Ambil nama toko/merchant dari baris paling atas (bukan alamat, bukan keterangan). Contoh: "ALFAMART", "INDOMARET", "BATU KANDIK", dst.
-
-3. category: Berdasarkan nama toko atau barang, tentukan kategori (Makanan, Belanja Online, Transportasi, Tagihan, Pendidikan, Hiburan, Lainnya).
-
-OUTPUT: {"amount": <integer_tanpa_titik>, "title": "<string>", "category": "<string>"}'''
+{"amount": 16200, "title": "ALFAMART", "category": "Belanja Online"}'''
     );
 
     final imagePart = DataPart(mimeType, imageBytes);
@@ -129,14 +119,21 @@ OUTPUT: {"amount": <integer_tanpa_titik>, "title": "<string>", "category": "<str
         }
       }
 
-      String mappedCategory = _CategoryMapper.mapCategory(data['category']?.toString());
+      String title = data['title']?.toString() ?? 'Belanja';
+      String rawCategory = data['category']?.toString() ?? '';
+      String mappedCategory = _CategoryMapper.mapCategory(rawCategory.isNotEmpty ? rawCategory : title);
+      
+      if (total == null || total <= 0) {
+        throw Exception('Total tidak valid atau kosong');
+      }
       
       return OcrResult(
         total: total,
-        note: data['title']?.toString(),
+        note: title,
         category: mappedCategory,
       );
     } catch (e) {
+      debugPrint('OCR Error: $e');
       throw Exception('Gagal memparsing JSON dari Gemini: $e\nResponse: $text');
     }
   }
