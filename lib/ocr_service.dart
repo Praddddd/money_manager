@@ -79,17 +79,25 @@ class OcrService {
     );
 
     final prompt = TextPart(
-        '''Ekstrak data dari struk belanja. PENTING: Keluarkan HANYA JSON tanpa markdown atau teks tambahan.
+        '''Ekstrak data dari struk belanja Indonesia. PENTING: Keluarkan HANYA JSON tanpa markdown atau teks tambahan.
 
 INSTRUKSI KETAT:
 
-1. amount: WAJIB cari angka setelah "Total Belanja" atau "Total Pembelian" atau "TOTAL". Jika ada lebih dari satu baris dengan "Total", ambil yang PALING BAWAH. ABAIKAN TOTAL ITEM, TUNAI, KEMBALIAN, atau DISKON. Jika tidak menemukan "Total Belanja", cari baris terakhir dengan angka besar yang masuk akal sebagai total transaksi. Nilai harus integer positif.
+1. amount: Cari baris yang TEPAT berisi "Total Belanja" (bukan "Total Item", bukan "Total Disc", bukan "Tunai", bukan "Kembalian"). Angka di samping "Total Belanja" adalah yang dicari. Contoh struk Alfamart:
+   - Total Item: 18.100 ← JANGAN AMBIL INI
+   - Total Disc: 1.900 ← JANGAN AMBIL INI
+   - Total Belanja: 16.200 ← AMBIL INI
+   - Tunai: 50.000 ← JANGAN AMBIL INI
+   - Kembalian: 33.800 ← JANGAN AMBIL INI
+   
+   Jika tidak ada "Total Belanja", cari "TOTAL:" atau jumlah terbesar yang logical sebagai total transaksi. Nilai harus integer positif tanpa titik ribuan.
 
-2. title: Ambil nama toko/merchant dari baris paling atas struk atau logo. Contoh: "Indomaret", "Alfamart", "Toko ABC", dst. Jangan ambil dari deskripsi barang.
+2. title: Ambil nama toko/merchant dari baris paling atas (bukan alamat, bukan keterangan). Contoh: "ALFAMART", "INDOMARET", "BATU KANDIK", dst.
 
 3. category: Berdasarkan nama toko atau barang, tentukan kategori (Makanan, Belanja Online, Transportasi, Tagihan, Pendidikan, Hiburan, Lainnya).
 
-OUTPUT: {"amount": <integer>, "title": "<string>", "category": "<string>"}''');
+OUTPUT: {"amount": <integer_tanpa_titik>, "title": "<string>", "category": "<string>"}'''
+    );
 
     final imagePart = DataPart(mimeType, imageBytes);
 
@@ -116,7 +124,8 @@ OUTPUT: {"amount": <integer>, "title": "<string>", "category": "<string>"}''');
         if (data['amount'] is num) {
           total = (data['amount'] as num).toDouble();
         } else if (data['amount'] is String) {
-          total = double.tryParse(data['amount'].toString().replaceAll(RegExp(r'[^0-9.]'), ''));
+          final cleanAmount = data['amount'].toString().replaceAll('.', '').replaceAll(',', '').replaceAll(RegExp(r'[^0-9]'), '');
+          total = double.tryParse(cleanAmount);
         }
       }
 
