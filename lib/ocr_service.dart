@@ -29,14 +29,15 @@ class OcrService {
     );
 
     final prompt = TextPart(
-        '''Analisis struk belanja.
+        '''Ekstrak data dari gambar struk ini.
+Aturan:
 
-Cari teks 'Total Belanja' atau 'Total'. Ambil angkanya. ABAIKAN angka pada baris 'Tunai', 'Kembalian', atau 'Total Item'.
+amount: Cari baris 'Total Belanja'. Ambil angkanya. Jangan ambil dari baris 'Tunai', 'Kembalian', atau 'Total Item'.
 
-Ambil nama toko dari baris teratas (contoh: Alfamart).
+title: Ambil nama toko di baris paling atas.
 
-Tentukan kategori berdasarkan barang yang dibeli (Makanan, Belanja, Transportasi, dll).
-Keluarkan HANYA JSON dengan schema: {"amount": integer, "title": "string", "category": "string"}''');
+category: Tentukan kategori dari barang yang dibeli (Makanan, Belanja, Transportasi, Hiburan, dll).
+Keluarkan HANYA format JSON valid tanpa awalan/akhiran: {"amount": integer, "title": "string", "category": "string"}''');
 
     final imagePart = DataPart(mimeType, imageBytes);
 
@@ -52,13 +53,11 @@ Keluarkan HANYA JSON dengan schema: {"amount": integer, "title": "string", "cate
     debugPrint('Gemini response: $text');
 
     try {
-      String rawText = text;
-      // Hapus markdown block
+      String rawText = text ?? '{}';
       rawText = rawText.replaceAll(RegExp(r'```json\n?'), '').replaceAll(RegExp(r'```'), '').trim();
-      // Ekstrak hanya bagian dalam kurung kurawal
       final match = RegExp(r'\{[\s\S]*\}').firstMatch(rawText);
-      final jsonString = match != null ? match.group(0)! : '{}';
-      final data = jsonDecode(jsonString);
+      final cleanJson = match != null ? match.group(0)! : '{}';
+      final data = jsonDecode(cleanJson);
 
       double? total;
       if (data['amount'] != null) {
