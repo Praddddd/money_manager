@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'ocr_service.dart';
 import 'csv_export.dart';
+import 'pages/add_expense_page.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DESIGN SYSTEM
@@ -764,7 +765,7 @@ class _AppShellState extends State<AppShell> {
 
   static const _pages = [
     DashboardPage(),
-    AddExpensePage(),
+    AddExpensePageV2(),
     HistoryPage(),
     StatsPage(),
   ];
