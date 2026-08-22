@@ -50,6 +50,81 @@ class C {
   ];
 }
 
+class Glassmorphism {
+  static BoxDecoration card({
+    Color bgColor = C.card,
+    double blur = 10,
+    double opacity = 0.1,
+  }) {
+    return BoxDecoration(
+      color: bgColor.withValues(alpha: 0.7),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(
+        color: Colors.white.withValues(alpha: opacity),
+        width: 1.2,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.15),
+          blurRadius: blur,
+          offset: const Offset(0, 8),
+        ),
+        BoxShadow(
+          color: Colors.white.withValues(alpha: 0.05),
+          blurRadius: blur,
+          offset: const Offset(0, -2),
+        ),
+      ],
+    );
+  }
+
+  static BoxDecoration button({
+    Color bgColor = C.accent,
+    double blur = 12,
+  }) {
+    return BoxDecoration(
+      color: bgColor.withValues(alpha: 0.85),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(
+        color: Colors.white.withValues(alpha: 0.15),
+        width: 1.2,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: bgColor.withValues(alpha: 0.3),
+          blurRadius: blur,
+          offset: const Offset(0, 6),
+        ),
+        BoxShadow(
+          color: Colors.white.withValues(alpha: 0.08),
+          blurRadius: blur / 2,
+          offset: const Offset(0, -2),
+        ),
+      ],
+    );
+  }
+
+  static BoxDecoration input({
+    double blur = 8,
+  }) {
+    return BoxDecoration(
+      color: C.elevated.withValues(alpha: 0.6),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(
+        color: Colors.white.withValues(alpha: 0.08),
+        width: 1,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.1),
+          blurRadius: blur,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    );
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // MODEL
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -552,57 +627,113 @@ class _SplashScreenState extends State<SplashScreen>
         animation: Listenable.merge([_inCtrl, _outCtrl]),
         builder: (context, _) => Opacity(
           opacity: _screenOut.value,
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  C.bg,
+                  C.bg.withValues(alpha: 0.8),
+                  C.elevated.withValues(alpha: 0.3),
+                ],
+              ),
+            ),
+            child: Stack(
               children: [
-                Opacity(
-                  opacity: _iconFade.value,
-                  child: Transform.scale(
-                    scale: _iconScale.value,
-                    child: Container(
-                      width: 88,
-                      height: 88,
-                      decoration: BoxDecoration(
-                        color: C.accent,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: C.accent.withValues(alpha: 0.25),
-                            blurRadius: 40,
-                            spreadRadius: 4,
-                          ),
+                Positioned(
+                  top: -100,
+                  right: -100,
+                  child: Container(
+                    width: 300,
+                    height: 300,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          C.accent.withValues(alpha: 0.15),
+                          C.accent.withValues(alpha: 0),
                         ],
-                      ),
-                      child: const Icon(
-                        Icons.account_balance_wallet_rounded,
-                        size: 40,
-                        color: Colors.white,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 28),
-                Opacity(
-                  opacity: _textFade.value,
+                Positioned(
+                  bottom: -150,
+                  left: -150,
+                  child: Container(
+                    width: 350,
+                    height: 350,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          C.accent.withValues(alpha: 0.1),
+                          C.accent.withValues(alpha: 0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Center(
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        'Expense Tracker',
-                        style: GoogleFonts.inter(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: C.t1,
-                          letterSpacing: -0.5,
+                      Opacity(
+                        opacity: _iconFade.value,
+                        child: Transform.scale(
+                          scale: _iconScale.value,
+                          child: Container(
+                            width: 100,
+                            height: 100,
+                            decoration: Glassmorphism.button(bgColor: C.accent),
+                            child: const Icon(
+                              Icons.account_balance_wallet_rounded,
+                              size: 48,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Kelola pengeluaranmu',
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          color: C.t3,
-                          letterSpacing: 0.3,
+                      const SizedBox(height: 40),
+                      Opacity(
+                        opacity: _textFade.value,
+                        child: Column(
+                          children: [
+                            Text(
+                              'Expense Tracker',
+                              style: GoogleFonts.inter(
+                                fontSize: 28,
+                                fontWeight: FontWeight.w900,
+                                color: C.t1,
+                                letterSpacing: -0.8,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: C.accent.withValues(alpha: 0.3),
+                                  width: 1,
+                                ),
+                                color: C.accent.withValues(alpha: 0.08),
+                              ),
+                              child: Text(
+                                'Kelola pengeluaranmu dengan mudah',
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  color: C.accent,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -756,18 +887,7 @@ class _Card extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: padding,
-      decoration: BoxDecoration(
-        color: C.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: C.divider, width: 0.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.4),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+      decoration: Glassmorphism.card(),
       child: child,
     );
   }
