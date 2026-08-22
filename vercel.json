@@ -1,4 +1,4 @@
 {
-  "buildCommand": "curl https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.0-stable.tar.xz -o flutter.tar.xz && tar xf flutter.tar.xz && export PATH=$PATH:$PWD/flutter/bin && flutter pub get && flutter build web --release",
+  "buildCommand": "curl https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.3-stable.tar.xz -o flutter.tar.xz && tar xf flutter.tar.xz && export PATH=$PATH:$PWD/flutter/bin && flutter config --no-analytics && flutter pub get && flutter build web --release",
   "outputDirectory": "build/web"
 }
