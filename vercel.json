@@ -1,4 +1,7 @@
 {
-  "buildCommand": "bash ./build.sh",
-  "outputDirectory": "build/web"
+  "buildCommand": "curl -L https://bit.ly/flutter-linux-324 | tar xf - && export PATH=$PATH:$PWD/flutter/bin && flutter build web --release",
+  "outputDirectory": "build/web",
+  "env": {
+    "FLUTTER_SKIP_UPDATE_CHECK": "true"
+  }
 }
