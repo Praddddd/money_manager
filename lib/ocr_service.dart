@@ -1,7 +1,6 @@
-import 'dart:convert';
-import 'package:google_generative_ai/google_generative_ai.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 class OcrResult {
   final double? total;
@@ -61,80 +60,106 @@ class _CategoryMapper {
   }
 }
 
-/// OCR service that uses Google Gemini AI for intelligent receipt parsing.
 class OcrService {
-  /// Sends an image as bytes to Gemini API for text recognition and structured data extraction.
   static Future<OcrResult> processImage(Uint8List imageBytes, String mimeType) async {
-    final apiKey = dotenv.env['GEMINI_API_KEY'];
-    if (apiKey == null || apiKey.isEmpty) {
-      throw Exception('GEMINI_API_KEY tidak ditemukan di .env');
-    }
-
-    final model = GenerativeModel(
-      model: 'gemini-1.5-flash',
-      apiKey: apiKey,
-      generationConfig: GenerationConfig(
-        responseMimeType: 'application/json',
-      ),
-    );
-
-    final prompt = TextPart(
-        '''Ekstrak struk belanja. Keluarkan HANYA JSON murni tanpa apapun.
-
-Cari ini:
-- amount: Angka di belakang kata "Total Belanja" (tidak "Total Item", "Tunai", "Kembalian"). Jika tidak ada "Total Belanja", ambil angka terbesar di struk. Output: integer saja (16200, bukan 16.200).
-- title: Nama toko di baris pertama/atas struk.
-- category: Kategori dari nama toko atau barang.
-
-{"amount": 16200, "title": "ALFAMART", "category": "Belanja Online"}'''
-    );
-
-    final imagePart = DataPart(mimeType, imageBytes);
-
-    final response = await model.generateContent([
-      Content.multi([prompt, imagePart])
-    ]);
-
-    final text = response.text;
-    if (text == null || text.isEmpty) {
-      throw Exception('Gemini mengembalikan respons kosong.');
-    }
-
-    debugPrint('Gemini response: $text');
-
+    final inputImage = InputImage.fromBytes(bytes: imageBytes, metadata: InputImageMetadata(size: const Size(0, 0), rotation: InputImageRotation.rotation0deg, format: InputImageFormat.bgra8888, bytesPerRow: 0));
+    
+    final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    
     try {
-      String rawText = text ?? '{}';
-      rawText = rawText.replaceAll(RegExp(r'```json\n?'), '').replaceAll(RegExp(r'```'), '').trim();
-      final match = RegExp(r'\{[\s\S]*\}').firstMatch(rawText);
-      final cleanJson = match != null ? match.group(0)! : '{}';
-      final data = jsonDecode(cleanJson);
-
-      double? total;
-      if (data['amount'] != null) {
-        if (data['amount'] is num) {
-          total = (data['amount'] as num).toDouble();
-        } else if (data['amount'] is String) {
-          final cleanAmount = data['amount'].toString().replaceAll('.', '').replaceAll(',', '').replaceAll(RegExp(r'[^0-9]'), '');
-          total = double.tryParse(cleanAmount);
-        }
-      }
-
-      String title = data['title']?.toString() ?? 'Belanja';
-      String rawCategory = data['category']?.toString() ?? '';
-      String mappedCategory = _CategoryMapper.mapCategory(rawCategory.isNotEmpty ? rawCategory : title);
+      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+      final fullText = recognizedText.text.toLowerCase();
+      
+      debugPrint('OCR extracted text:\n$fullText');
+      
+      final title = _extractStoreName(fullText);
+      final total = _extractTotal(fullText);
+      final category = _CategoryMapper.mapCategory(title);
       
       if (total == null || total <= 0) {
-        throw Exception('Total tidak valid atau kosong');
+        throw Exception('Total tidak ditemukan atau invalid');
       }
       
       return OcrResult(
         total: total,
         note: title,
-        category: mappedCategory,
+        category: category,
       );
-    } catch (e) {
-      debugPrint('OCR Error: $e');
-      throw Exception('Gagal memparsing JSON dari Gemini: $e\nResponse: $text');
+    } finally {
+      await textRecognizer.close();
     }
+  }
+
+  static String _extractStoreName(String text) {
+    final lines = text.split('\n');
+    
+    for (final line in lines) {
+      final clean = line.trim();
+      if (clean.isEmpty) continue;
+      if (clean.length < 3) continue;
+      if (clean.contains('pt.sumber') || clean.contains('alfaria') || clean.contains('alfamart') || 
+          clean.contains('indomaret') || clean.contains('batu kandik') || clean.contains('toko')) {
+        return clean.replaceAll(RegExp(r'[^a-z0-9\s]'), '').trim();
+      }
+      if (!clean.contains('total') && !clean.contains('item') && !clean.contains('rp') && 
+          !clean.contains('diskon') && !clean.contains('tunai') && !clean.contains('kembalian') &&
+          !clean.contains('kasir') && !clean.contains('tanggal')) {
+        return clean.replaceAll(RegExp(r'[^a-z0-9\s]'), '').trim();
+      }
+    }
+    
+    return 'Belanja';
+  }
+
+  static double? _extractTotal(String text) {
+    final lines = text.split('\n');
+    double? largestAmount;
+    
+    for (final line in lines) {
+      if (line.contains('total belanja')) {
+        final match = RegExp(r'(\d+)[.,]?(\d*)').firstMatch(line);
+        if (match != null) {
+          final num = match.group(1)!;
+          final decimal = match.group(2);
+          final amount = double.parse('$num${decimal != null && decimal.isNotEmpty ? '.$decimal' : '.0'}');
+          if (amount > 0) return amount;
+        }
+      }
+    }
+    
+    for (final line in lines) {
+      if (line.contains('total') && !line.contains('item') && !line.contains('diskon') && 
+          !line.contains('tunai') && !line.contains('kembalian')) {
+        final match = RegExp(r'(\d+)[.,]?(\d*)').firstMatch(line);
+        if (match != null) {
+          final num = match.group(1)!;
+          final decimal = match.group(2);
+          final amount = double.parse('$num${decimal != null && decimal.isNotEmpty ? '.$decimal' : '.0'}');
+          if (amount > 0 && amount < 10000000) {
+            if (largestAmount == null || amount > largestAmount) {
+              largestAmount = amount;
+            }
+          }
+        }
+      }
+    }
+    
+    if (largestAmount != null) return largestAmount;
+    
+    for (final line in lines) {
+      final match = RegExp(r'(\d+)[.,]?(\d*)').firstMatch(line);
+      if (match != null) {
+        final num = match.group(1)!;
+        final decimal = match.group(2);
+        final amount = double.parse('$num${decimal != null && decimal.isNotEmpty ? '.$decimal' : '.0'}');
+        if (amount > 100 && amount < 10000000) {
+          if (largestAmount == null || amount > largestAmount) {
+            largestAmount = amount;
+          }
+        }
+      }
+    }
+    
+    return largestAmount;
   }
 }
